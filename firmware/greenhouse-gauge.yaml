@@ -1,0 +1,231 @@
+# greenhouse-gauge.yaml
+# Temperature + humidity gauge: Wemos D1 Mini (ESP8266) + SHT31 sensor +
+# 1.3" SH1106 OLED screen. Public build for viewers: no passwords or
+# networks built in.
+#
+# Wiring (two separate I2C buses):
+#   SHT31:  VIN->3V3  GND->G  SCL->D1  SDA->D2
+#   OLED:   VCC->3V3  GND->G  SCL->D5  SDA->D6
+#
+# Wi-Fi is optional. To add it after flashing, either:
+#   - ESPHome Web (web.esphome.io) over USB (Improv serial), or
+#   - join the "Greenhouse-Gauge" hotspot from a phone and pick your Wi-Fi.
+# Readings then at http://greenhouse-gauge.local/ (or the gauge's IP).
+
+esphome:
+  name: greenhouse-gauge
+  friendly_name: "Greenhouse Gauge"
+
+esp8266:
+  board: d1_mini
+
+logger:
+
+# ---------------------------------------------------------------- self-heal
+# If the sensor gives no reading for 2 minutes (loose wire, stuck I2C bus),
+# the gauge restarts itself, because ESPHome never retries a failed sensor
+# until a reboot. Up to 5 restarts in a row. If the sensor is still dead
+# after the 5th, it stops restarting and reports the fault instead:
+#   - web:    /binary_sensor/Gauge%20Sensor%20Fault  -> ON
+#             /sensor/Gauge%20Restart%20Attempts      -> 0..5
+#   - screen: "SENSOR FAIL" (the screen has its own bus, so it keeps working)
+#   - blue LED on the board blinks fast
+# A good reading resets the counter to 0. Unplugging the gauge also resets it.
+# Note: a software restart does NOT cut power to the SHT31/OLED, so a chip
+# that's latched the bus may only clear with a real power cycle.
+globals:
+  - id: restart_attempts
+    type: int
+    # Kept in RTC memory, which survives a software restart.
+    restore_value: true
+    initial_value: "0"
+  - id: last_good_ms
+    type: uint32_t
+    restore_value: false
+    initial_value: "0"
+
+interval:
+  # Blue LED pattern (see output: blue_led).
+  - interval: 125ms
+    then:
+      - lambda: |-
+          static uint32_t tick = 0;
+          tick++;
+          bool fault = id(sensor_fault).state;
+          bool healing = id(restart_attempts) > 0 || (millis() - id(last_good_ms) > 30000);
+          bool on = false;
+          if (fault) on = tick % 2;                // 4 blinks/s
+          else if (healing) on = (tick / 8) % 2;   // 1s on, 1s off
+          if (on) id(blue_led).turn_on(); else id(blue_led).turn_off();
+  - interval: 15s
+    then:
+      - lambda: |-
+          const uint32_t NO_READING_MS = 120000;  // 2 minutes
+          const int MAX_RESTARTS = 5;
+          if (millis() - id(last_good_ms) < NO_READING_MS) return;
+          if (id(restart_attempts) < MAX_RESTARTS) {
+            id(restart_attempts) += 1;
+            ESP_LOGW("selfheal", "No sensor reading for 2 min. Restart attempt %d of %d.",
+                     id(restart_attempts), MAX_RESTARTS);
+            id(restart_count_sensor).publish_state(id(restart_attempts));
+            App.safe_reboot();
+          } else {
+            ESP_LOGE("selfheal", "Sensor still dead after %d restarts. Not restarting again. Check the wiring, then unplug and replug the gauge.", MAX_RESTARTS);
+          }
+
+wifi:
+  id: wifi_comp
+  # No network built in. Saved Wi-Fi comes from Improv (USB) or the hotspot.
+  # Never reboot just because Wi-Fi is missing; the screen keeps working.
+  reboot_timeout: 0s
+  # Setup hotspot, only while the gauge isn't connected to Wi-Fi.
+  ap:
+    ssid: "Greenhouse-Gauge"
+
+# Phone setup page shown when you join the hotspot.
+captive_portal:
+
+# Receive Wi-Fi name + password over USB (ESPHome Web).
+improv_serial:
+
+# Readings at http://greenhouse-gauge.local/
+web_server:
+  port: 80
+
+# Home Assistant finds the gauge on its own (optional). Never reboot just
+# because Home Assistant isn't connected.
+api:
+  reboot_timeout: 0s
+
+# Two separate I2C buses, so a dead or half-connected sensor (which clamps
+# SDA low when it loses power) can't blank the screen too. Only 3V3 and GND
+# are shared between the two modules now.
+# Default on ESP8266 is 50kHz, which made a full OLED redraw take ~312ms.
+# SH1106 and SHT31 both support 400kHz. If I2C errors or NaN readings show
+# up, drop to 200kHz (100kHz if the sensor moves onto a long cable).
+i2c:
+  - id: bus_sensor     # SHT31
+    sda: D2
+    scl: D1
+    frequency: 400kHz
+  - id: bus_display    # SH1106 OLED
+    sda: D6
+    scl: D5
+    frequency: 400kHz
+
+sensor:
+  - platform: template
+    id: restart_count_sensor
+    name: "Gauge Restart Attempts"
+    accuracy_decimals: 0
+    lambda: return id(restart_attempts);
+    update_interval: 15s
+
+  - platform: sht3xd
+    i2c_id: bus_sensor
+    address: 0x44
+    temperature:
+      id: temp_c
+      name: "Greenhouse Temperature"
+      # Frozen-reading guard: if the sensor stops updating (it normally
+      # reports every 10s), publish "no value" after 30s instead of serving
+      # the last reading as if it were current.
+      filters:
+        - timeout: 30s
+      on_value:
+        then:
+          - lambda: |-
+              if (isnan(x)) return;
+              id(last_good_ms) = millis();
+              if (id(restart_attempts) != 0) {
+                ESP_LOGI("selfheal", "Sensor is back after %d restart(s). Counter reset.", id(restart_attempts));
+                id(restart_attempts) = 0;
+                id(restart_count_sensor).publish_state(0);
+              }
+    humidity:
+      id: humidity
+      name: "Greenhouse Humidity"
+      # Frozen-reading guard: if the sensor stops updating (it normally
+      # reports every 10s), publish "no value" after 30s instead of serving
+      # the last reading as if it were current.
+      filters:
+        - timeout: 30s
+    # Greenhouse air changes slowly. 10s is plenty.
+    update_interval: 10s
+    # The SHT31 has a tiny built-in heater that dries the sensor after
+    # condensation. Left off: it also skews readings warmer and drier.
+    # Turn it on only if readings get stuck near 100% after misting.
+    heater_enabled: false
+
+# Blue LED on the D1 Mini (GPIO2 / D4, lit when the pin is LOW). It isn't on
+# either I2C bus, so a jammed bus can't knock it out.
+#   off          = all good
+#   slow blink   = no reading for 30s+, or self-healing (restarting)
+#   fast blink   = gave up after 5 restarts (Gauge Sensor Fault ON)
+output:
+  - platform: gpio
+    id: blue_led
+    pin:
+      number: GPIO2
+      inverted: true
+
+binary_sensor:
+  - platform: template
+    id: sensor_fault
+    name: "Gauge Sensor Fault"
+    # ON only once the 5 restarts are used up and there's still no reading.
+    lambda: |-
+      return id(restart_attempts) >= 5 && (millis() - id(last_good_ms) >= 120000);
+
+font:
+  # Downloaded from Google Fonts when the firmware is built.
+  # Values: 22px whole numbers fit each ~63px half ("105°F" 56px, "100%" 52px).
+  - file: "gfonts://Roboto"
+    id: font_value
+    size: 22
+    glyphs: "0123456789-.%°F"
+  - file: "gfonts://Roboto"
+    id: font_label
+    size: 11
+    glyphs: "TEMPHUDIY"
+  # Bottom status line: "SENSOR FAIL" or "No WiFi" only.
+  - file: "gfonts://Roboto"
+    id: font_small
+    size: 10
+    glyphs: " AEFILNORSWio"
+
+display:
+  - platform: ssd1306_i2c
+    i2c_id: bus_display
+    model: "SH1106 128x64"
+    address: 0x3C
+    # Lower brightness slows OLED burn-in on a screen that's always on.
+    contrast: 50%
+    update_interval: 5s
+    # Layout: divider at x=64 down to the status line. Left half shows TEMP,
+    # right half HUMIDITY, bottom line shows "No WiFi" only when disconnected.
+    lambda: |-
+      it.vertical_line(64, 0, 52);
+
+      it.print(32, 1, id(font_label), TextAlign::TOP_CENTER, "TEMP");
+      it.print(96, 1, id(font_label), TextAlign::TOP_CENTER, "HUMIDITY");
+
+      float t = id(temp_c).state;
+      if (isnan(t)) {
+        it.print(32, 34, id(font_value), TextAlign::CENTER, "--");
+      } else {
+        it.printf(32, 34, id(font_value), TextAlign::CENTER, "%.0f°F", t * 9.0f / 5.0f + 32.0f);
+      }
+
+      float h = id(humidity).state;
+      if (isnan(h)) {
+        it.print(96, 34, id(font_value), TextAlign::CENTER, "--");
+      } else {
+        it.printf(96, 34, id(font_value), TextAlign::CENTER, "%.0f%%", h);
+      }
+
+      if (id(sensor_fault).state) {
+        it.print(64, 63, id(font_small), TextAlign::BOTTOM_CENTER, "SENSOR FAIL");
+      } else if (!id(wifi_comp).is_connected()) {
+        it.print(64, 63, id(font_small), TextAlign::BOTTOM_CENTER, "No WiFi");
+      }

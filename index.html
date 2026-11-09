@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Install the Greenhouse Gauge</title>
+<script type="module" src="https://unpkg.com/esp-web-tools@10/dist/web/install-button.js?module"></script>
+<style>
+  body { font-family: -apple-system, "Helvetica Neue", Arial, sans-serif; color: #1d2421; max-width: 620px; margin: 40px auto; padding: 0 20px; line-height: 1.5; }
+  h1 { color: #2f7d4f; margin-bottom: 4px; }
+  .sub { color: #5b6661; margin-top: 0; }
+  ol li { margin-bottom: 10px; }
+  .install { text-align: center; margin: 28px 0; }
+  esp-web-install-button button, .btn { background: #2f7d4f; color: #fff; border: 0; border-radius: 10px; font-size: 20px; font-weight: 700; padding: 14px 40px; cursor: pointer; }
+  .note { background: #fdf2e6; border-left: 4px solid #a4570f; border-radius: 6px; padding: 10px 14px; }
+  a { color: #2f7d4f; }
+  .small { color: #5b6661; font-size: 14px; }
+</style>
+</head>
+<body>
+  <h1>Greenhouse Gauge</h1>
+  <p class="sub">Temperature &amp; humidity gauge. Install the software in one click.</p>
+
+  <ol>
+    <li>Wire it up first (<a href="https://github.com/chetsemail26/diy-greenhouse-gauge#2-connect-the-wires">wiring guide</a>).</li>
+    <li>Plug the D1 Mini into this computer with a USB <b>data</b> cable.</li>
+    <li>Click <b>Install</b>, pick the board from the list (<i>USB Serial</i>, <i>CH340</i> or <i>usbserial</i>) and click <b>Connect</b>.</li>
+    <li>When it's done, it asks for your Wi-Fi. Enter it, or skip: the gauge works without Wi-Fi.</li>
+  </ol>
+
+  <div class="install">
+    <esp-web-install-button manifest="manifest.json">
+      <button slot="activate">Install</button>
+      <div slot="unsupported" class="note">This browser can't install it. Open this page on a computer in <b>Chrome</b> or <b>Edge</b>.<br>(Phones, Safari and Firefox don't work.)</div>
+      <div slot="not-allowed" class="note">This page must be opened over https. Use the link from the video.</div>
+    </esp-web-install-button>
+  </div>
+
+  <div class="note"><b>The board isn't in the list?</b> Swap the USB cable (most are charge-only), try another USB port, or install the free
+  <b>CH340 driver</b> from the chip maker, WCH (needed on Windows and older Macs), then reload this page.</div>
+
+  <p class="small">Full guide, parts list and troubleshooting:
+  <a href="https://github.com/chetsemail26/diy-greenhouse-gauge">github.com/chetsemail26/diy-greenhouse-gauge</a></p>
+</body>
+</html>
