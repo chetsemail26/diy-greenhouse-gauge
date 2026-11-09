@@ -92,11 +92,6 @@ improv_serial:
 web_server:
   port: 80
 
-# Home Assistant finds the gauge on its own (optional). Never reboot just
-# because Home Assistant isn't connected.
-api:
-  reboot_timeout: 0s
-
 # Two separate I2C buses, so a dead or half-connected sensor (which clamps
 # SDA low when it loses power) can't blank the screen too. Only 3V3 and GND
 # are shared between the two modules now.

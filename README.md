@@ -53,7 +53,7 @@ Keep the USB cable unplugged while you wire.
 1. Plug the D1 Mini into a computer with the USB **data** cable.
 2. Open the **[install page](https://chetsemail26.github.io/diy-greenhouse-gauge/)** in **Chrome** or **Edge**.
 3. Click **Install**, pick the board (*USB Serial*, *CH340* or *usbserial*), click **Connect** and wait 1-2 minutes.
-4. When it asks for Wi-Fi, enter yours, or skip it. The gauge works fine without Wi-Fi.
+4. When it asks for Wi-Fi, enter yours, or skip it. The gauge works fine without Wi-Fi. Once it says the installation is complete, it offers a link to open the gauge's page with live readings.
 
 **Board not in the list?** Swap the USB cable (most likely a charge-only one), try another port, or install the free **CH340 driver** from the chip maker, WCH (Windows and older Macs).
 
@@ -99,6 +99,6 @@ then build it with `esphome run firmware/greenhouse-gauge.yaml`.
 
 - Sensor on its own I2C bus (D2/D1), screen on another (D6/D5), both at 400 kHz, so a bad sensor can't freeze the screen.
 - Self-heal: no reading for 2 minutes → restart, up to 5 times, then `Gauge Sensor Fault` turns on.
-- Wi-Fi via Improv serial or the setup hotspot (captive portal). Home Assistant native API (no encryption key).
+- Wi-Fi via Improv serial or the setup hotspot (captive portal).
 - Web page: `/sensor/Greenhouse%20Temperature` (°C), `/sensor/Greenhouse%20Humidity`.
 </details>
